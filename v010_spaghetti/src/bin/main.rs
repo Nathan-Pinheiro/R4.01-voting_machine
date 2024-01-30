@@ -46,7 +46,6 @@ fn main() -> anyhow::Result<()> {
                     println!("{} à voté", args[1]);
 
                     if args.len() == 3 {
-
                         match candidatesVotes.get(&args[2]) {
 
                             Some(candidateScore) => {
@@ -59,10 +58,14 @@ fn main() -> anyhow::Result<()> {
                                 println!("Le candidat : {} n'existe pas !", args[2]);
                             }
                         }
+                    } else {
+                        let candidateScore = candidatesVotes.get(&String::from("Blanc")).expect("candidat blanc n'existe pas");
+                        candidatesVotes.insert(String::from("Blanc"), candidateScore + 1);
+                        println!("un vote blanc à été ajouté");
                     }
                 }
             }
-        } else if args[0].eq("votant") {
+        } else if args[0].eq("votants") {
             println!("Votants :");
             for votant in &votants {
                 println!(" - {}", votant);
@@ -73,8 +76,8 @@ fn main() -> anyhow::Result<()> {
                 println!(" - {} : {}", key, value);
             }
         } else {
-          println!("Commande invalide ...");
-      }
+            println!("Commande invalide ...");
+        }
     }
    
     Ok(())
