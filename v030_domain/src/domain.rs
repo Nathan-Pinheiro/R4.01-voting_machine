@@ -1,10 +1,10 @@
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
 
-#[derive(Ord, PartialOrd, PartialEq, Eq)]
+#[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub struct Voter(pub String);
 
-#[derive(Ord, PartialOrd, PartialEq, Eq)]
+#[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub struct Candidate(pub String);
 
 pub struct Score(pub usize);
@@ -43,6 +43,7 @@ pub struct BallotPaper {
     pub candidate: Option<Candidate>
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum VoteOutcome {
     AcceptedVote(Voter, Candidate),
     BlankVote(Voter),
@@ -86,12 +87,84 @@ impl VotingMachine {
         }
     }
 
-    pub fn get_scoreboard(&self) -> &Scoreboard {
-        return &self.scoreboard;
+    pub fn get_scoreboard(&mut self) -> &mut Scoreboard {
+        return &mut self.scoreboard;
     }
 
     pub fn get_voters(&mut self) -> &mut AttendanceSheet {
         return &mut self.voters;
     }
 
+}
+
+#[cfg(test)]
+mod tests 
+{
+    use super::{VotingMachine, Candidate, BallotPaper, Voter, VoteOutcome};
+
+    fn setup_voting_machine() -> VotingMachine
+    {
+        let mut candidates : Vec<Candidate> = Vec::new();
+        candidates.push(Candidate("E.Macron".to_string()));
+        candidates.push(Candidate("M.Lepen".to_string()));
+        candidates.push(Candidate("JL.Mélanchon".to_string()));
+        return VotingMachine::new(candidates);
+    }
+
+    #[test]
+    fn vote_accepted()
+    {
+        let current_voter : Voter = Voter("Jean".to_string());
+        let current_candidate : Candidate = Candidate("E.Macron".to_string());
+
+        let ballot_paper : BallotPaper = BallotPaper { voter: current_voter.clone(), candidate: Some(current_candidate.clone()) };
+        let mut voting_machine : VotingMachine = setup_voting_machine();
+
+        let vote_outcome : VoteOutcome = voting_machine.vote(ballot_paper);
+
+        assert_eq!(vote_outcome, VoteOutcome::AcceptedVote(current_voter, current_candidate));
+    }
+
+    #[test]
+    fn vote_blank()
+    {
+        let current_voter : Voter = Voter("Jean".to_string());
+
+        let ballot_paper : BallotPaper = BallotPaper { voter: current_voter.clone(), candidate: None };
+        let mut voting_machine : VotingMachine = setup_voting_machine();
+
+        let vote_outcome : VoteOutcome = voting_machine.vote(ballot_paper);
+
+        assert_eq!(vote_outcome, VoteOutcome::BlankVote(current_voter));
+    }
+
+    #[test]
+    fn vote_invalid()
+    {
+        let current_voter : Voter  = Voter("Jean".to_string());
+        let current_candidate : Candidate = Candidate("J.Chirac".to_string());
+
+        let ballot_paper : BallotPaper = BallotPaper { voter: current_voter.clone(), candidate: Some(current_candidate.clone()) };
+        let mut voting_machine : VotingMachine = setup_voting_machine();
+
+        let vote_outcome : VoteOutcome = voting_machine.vote(ballot_paper);
+
+        assert_eq!(vote_outcome, VoteOutcome::InvalidVote(current_voter));
+    }
+
+    #[test]
+    fn has_already_voted()
+    {
+        let current_voter : Voter = Voter("Jean".to_string());
+        let current_candidate : Candidate = Candidate("E.Macron".to_string());
+
+        let mut voting_machine : VotingMachine = setup_voting_machine();
+
+        voting_machine.get_voters().0.insert(current_voter.clone());
+
+        let ballot_paper : BallotPaper = BallotPaper { voter: current_voter.clone(), candidate: Some(current_candidate.clone()) };
+        let vote_outcome : VoteOutcome = voting_machine.vote(ballot_paper);
+
+        assert_eq!(vote_outcome, VoteOutcome::HasAlreadyVoted(current_voter));
+    }
 }
