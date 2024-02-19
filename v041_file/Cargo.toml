@@ -1,5 +1,5 @@
 [package]
-name = "v040_memory"
+name = "v041_file"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,3 +10,5 @@ anyhow = "1.0.44"
 clap = { version = "~4.4.18", features = ["derive"] }
 async-trait = "0.1.77"
 tokio = { version = "1.36.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
