@@ -4,4 +4,9 @@ resolver = "2"
 
 members = [
     "v010_spaghetti",
+    "v020_configuration",
+    "v021_app_builder",
+    "v030_domain",
+    "v040_memory",
+    "v041_file",
 ]
