@@ -1,5 +1,7 @@
-use std::{self, io};
-use crate::{configuration::Configuration, domain::{Voter, VotingMachine, Candidate, BallotPaper, VoteOutcome}, storage::{memory::{MemoryStore}, Storage}};
+use std::{self, io, sync::Arc};
+use tokio::sync::RwLock;
+
+use crate::{configuration::{Configuration, StorageType}, domain::{Voter, VotingMachine, Candidate, BallotPaper, VoteOutcome}, storage::{memory::{MemoryStore}, Storage, file::FileStore}};
 
 pub async fn run_app(configuration: Configuration) -> anyhow::Result<()> {
 
@@ -11,7 +13,21 @@ pub async fn run_app(configuration: Configuration) -> anyhow::Result<()> {
         candidates.push(Candidate(String::from(candidate_config)));
     }
 
-    let mut memory : MemoryStore = MemoryStore::new(VotingMachine::new(candidates));
+
+    let machine : VotingMachine = VotingMachine::new(candidates.clone());
+
+    let memory: Arc<RwLock<dyn Storage>>;
+    match configuration.storage_type {
+        StorageType::Memory => 
+        {
+            memory = Arc::new(RwLock::new(MemoryStore::new(machine)));
+        }
+        StorageType::File => 
+        {
+            let filepath : &str = "data.txt";
+            memory = Arc::new(RwLock::new(FileStore::new(&machine, filepath).await?));
+        }
+    }
 
     let stdin = io::stdin();
     
@@ -54,32 +70,32 @@ pub async fn run_app(configuration: Configuration) -> anyhow::Result<()> {
                     }; 
                 }
 
-                let outcome : VoteOutcome = memory.get_voting_machine().await?.vote(ballot_paper);
+                let outcome : VoteOutcome = memory.read().await.get_voting_machine().await?.vote(ballot_paper);
 
                 match outcome 
                 {
                     VoteOutcome::AcceptedVote(voter, candidate) => 
                     {
-                        let mut new_voting_machine : VotingMachine = memory.get_voting_machine().await?;
+                        let mut new_voting_machine : VotingMachine = memory.read().await.get_voting_machine().await?;
                         new_voting_machine.get_voters().0.insert(voter);
                         new_voting_machine.get_scoreboard().scores.entry(candidate).and_modify(|score| score.0 += 1);
-                        let _ = memory.put_voting_machine(new_voting_machine.clone()).await;
+                        let _ = memory.write().await.put_voting_machine(new_voting_machine.clone()).await;
                         println!("Vote accepté !");
-                    }
+                    }       
                     VoteOutcome::BlankVote(voter) =>
                     {
-                        let mut new_voting_machine : VotingMachine = memory.get_voting_machine().await?;
+                        let mut new_voting_machine : VotingMachine = memory.read().await.get_voting_machine().await?;
                         new_voting_machine.get_voters().0.insert(voter);
-                        new_voting_machine.get_scoreboard().blank_score.0 += 1;
-                        let _ = memory.put_voting_machine(new_voting_machine.clone()).await;
+                        new_voting_machine.get_scoreboard().blank_scores.0 += 1;
+                        let _ = memory.write().await.put_voting_machine(new_voting_machine.clone()).await;
                         println!("Vote blanc");
                     }
                     VoteOutcome::InvalidVote(voter) => 
                     {   
-                        let mut new_voting_machine : VotingMachine = memory.get_voting_machine().await?;
+                        let mut new_voting_machine : VotingMachine = memory.read().await.get_voting_machine().await?;
                         new_voting_machine.get_voters().0.insert(voter);
-                        new_voting_machine.get_scoreboard().invalid_score.0 += 1;
-                        let _ = memory.put_voting_machine(new_voting_machine.clone()).await;
+                        new_voting_machine.get_scoreboard().invalid_scores.0 += 1;
+                        let _ = memory.write().await.put_voting_machine(new_voting_machine.clone()).await;
                         println!("Vote invalide");
                     }
                     VoteOutcome::HasAlreadyVoted(voter) => println!("{} à déjà voté. Il ne peut pas voter 2 fois !", voter.0),
@@ -89,7 +105,7 @@ pub async fn run_app(configuration: Configuration) -> anyhow::Result<()> {
         else if args[0].eq("votants") 
         {
             println!("Votants :");
-            for votant in &memory.get_voting_machine().await?.get_voters().0 
+            for votant in &memory.read().await.get_voting_machine().await?.get_voters().0 
             {
                 println!(" - {}", votant.0);
             }
@@ -97,12 +113,12 @@ pub async fn run_app(configuration: Configuration) -> anyhow::Result<()> {
         else if args[0].eq("scores") 
         {
             println!("Scores :");
-            for (key, value) in &memory.get_voting_machine().await?.get_scoreboard().scores 
+            for (key, value) in &memory.read().await.get_voting_machine().await?.get_scoreboard().scores 
             {
                 println!(" - {} : {}", key.0, value.0);
             }
-            println!(" - votes blancs : {}", memory.get_voting_machine().await?.get_scoreboard().blank_score.0);
-            println!(" - votes invalides : {}", memory.get_voting_machine().await?.get_scoreboard().invalid_score.0);
+            println!(" - votes blancs : {}", memory.read().await.get_voting_machine().await?.get_scoreboard().blank_scores.0);
+            println!(" - votes invalides : {}", memory.read().await.get_voting_machine().await?.get_scoreboard().invalid_scores.0);
         } 
         else 
         {

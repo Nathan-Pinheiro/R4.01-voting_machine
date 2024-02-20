@@ -48,12 +48,12 @@ mod tests
         let mut memory = MemoryStore::new(setup_voting_machine());
 
         let mut new_voting_machine = memory.get_voting_machine().await?;
-        new_voting_machine.get_scoreboard().invalid_score.0 += 1;
+        new_voting_machine.get_scoreboard().invalid_scores.0 += 1;
         memory.put_voting_machine(new_voting_machine.clone()).await?;
 
 
         let mut stored_machine = memory.get_voting_machine().await?;
-        assert_eq!(stored_machine.get_scoreboard().invalid_score.0, new_voting_machine.get_scoreboard().invalid_score.0);
+        assert_eq!(stored_machine.get_scoreboard().invalid_scores.0, new_voting_machine.get_scoreboard().invalid_scores.0);
 
         Ok(())
     }
