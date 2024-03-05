@@ -41,7 +41,8 @@ impl Scoreboard {
     }
 }
 
-pub struct BallotPaper {
+pub struct BallotPaper 
+{
     pub voter: Voter,
     pub candidate: Option<Candidate>
 }
