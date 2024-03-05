@@ -1,5 +1,6 @@
+use std::path::Path;
 use std::sync::{Arc, RwLock};
-use crate::domain::{VotingMachine, Scoreboard};
+use crate::domain::{VotingMachine, Scoreboard, Candidate};
 use crate::storage::Storage;
 use anyhow::{Result, Ok};
 use serde::{Serialize, Deserialize};
@@ -51,7 +52,6 @@ impl From<VotingMachine> for VotingMachineDao {
     }
 }
 
-
 pub struct FileStore {
     filepath: Arc<RwLock<String>>
 }
@@ -71,23 +71,106 @@ impl Storage for FileStore {
         Ok(VotingMachine::from(voting_machine_dao))
     }
 
-    async fn put_voting_machine(&mut self, machine: VotingMachine) -> Result<()> {
-        
+    async fn put_voting_machine(&mut self, machine: VotingMachine) -> Result<()> 
+    {
         let filepath = self.filepath.read().unwrap().clone();
-        let mut my_file = File::open(filepath).await?;
-
-        let _ = my_file.write_all(&serde_json::to_vec(&VotingMachineDao::from(machine)).expect(""));
+        let mut my_file = File::create(filepath).await?;
+        let machine_dao = VotingMachineDao::from(machine);
+        let serialized_machine = serde_json::to_string(&machine_dao)?;
+        my_file.write_all(serialized_machine.as_bytes()).await?;
         Ok(())
-    }   
+    }
 }
-impl FileStore {
-    pub async fn new(machine: &VotingMachine, filepath: &str) -> anyhow::Result<Self> {
 
-        let _ = File::create(filepath);
-        let mut file_store: FileStore = FileStore { filepath : Arc::new(RwLock::new(String::from(filepath))) };
-        let _ = file_store.put_voting_machine(machine.clone());
+impl FileStore 
+{
+    pub async fn new(machine: &VotingMachine, filepath: &str) -> anyhow::Result<Self> {
+        
+        let file_path : &Path = Path::new(filepath);
+    
+        let machine : VotingMachine = if file_path.exists() 
+        {
+            let mut file : File = File::open(file_path).await?;
+            let mut content: Vec<u8> = vec![];
+            file.read_to_end(&mut content).await?;
+            let content : VotingMachineDao = serde_json::from_slice::<VotingMachineDao>(&content)?;
+            content.into()
+        } 
+        else { machine.clone() };
+    
+        if !file_path.exists() { let _ = File::create(file_path).await; }
+
+        let mut file_store : FileStore = FileStore { filepath: Arc::new(RwLock::new(filepath.to_string())), };
+        let _ = file_store.put_voting_machine(machine).await;
+    
         Ok(file_store)
     }
 }
 
+#[cfg(test)]
+mod tests 
+{
+    use std::fs;
+
+    use crate::storage::Storage;
+    use crate::domain::{VotingMachine, Candidate};
+    use crate::storage::file::FileStore;
+    use std::sync::{Arc, RwLock};
+
+    fn setup_voting_machine() -> VotingMachine
+    {
+        let mut candidates : Vec<Candidate> = Vec::new();
+        candidates.push(Candidate("E.Macron".to_string()));
+        candidates.push(Candidate("M.Lepen".to_string()));
+        candidates.push(Candidate("JL.Mélanchon".to_string()));
+        return VotingMachine::new(candidates);
+    }
+
+    #[tokio::test]
+    async fn test_get_and_put_voting_machine() -> anyhow::Result<()> 
+    {
+        let mut machine : VotingMachine = setup_voting_machine();
+        let filepath : &str = "test.txt";
+        let memory : Arc<RwLock<FileStore>> = Arc::new(RwLock::new(FileStore::new(&machine, filepath).await?));
+
+        let stored_machine = {
+            let memory_guard = memory.read(); // Acquire lock on RwLock
+            let memory = memory_guard.as_ref().expect("Failed to get memory");
+            memory.get_voting_machine().await?
+        };
+
+        fs::remove_file(filepath)?;
+
+        assert_eq!(stored_machine, machine);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn store_value_is_conserved() -> anyhow::Result<()> 
+    {
+        let mut machine : VotingMachine = setup_voting_machine();
+        let filepath : &str = "test.txt";
+
+        let first_memory : Arc<RwLock<FileStore>> = Arc::new(RwLock::new(FileStore::new(&machine, filepath).await?));
+
+        let first_stored_machine = {
+            let memory_guard = first_memory.read(); // Acquire lock on RwLock
+            let memory = memory_guard.as_ref().expect("Failed to get memory");
+            memory.get_voting_machine().await?
+        };
+
+        let second_memory : Arc<RwLock<FileStore>> = Arc::new(RwLock::new(FileStore::new(&machine, filepath).await?));
+
+        let second_stored_machine = {
+            let memory_guard = first_memory.read(); // Acquire lock on RwLock
+            let memory = memory_guard.as_ref().expect("Failed to get memory");
+            memory.get_voting_machine().await?
+        };
+
+        fs::remove_file(filepath)?;
+
+        assert_eq!(first_stored_machine, second_stored_machine);
+        Ok(())
+    }
+}
 
